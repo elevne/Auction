@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7ce63c80-7d47-445f-bf16-50b21e72487d" name="Changes" comment="Auction 작업 중...">
+    <list default="true" id="7ce63c80-7d47-445f-bf16-50b21e72487d" name="Changes" comment="Auction 작업 중... (Buy Option 작업 중)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/Auction.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Auction.java" afterDir="false" />
     </list>
@@ -59,7 +59,8 @@
       <updated>1698463883924</updated>
       <workItem from="1698463885034" duration="4183000" />
       <workItem from="1698471761631" duration="2541000" />
-      <workItem from="1698543140939" duration="9539000" />
+      <workItem from="1698543140939" duration="9656000" />
+      <workItem from="1698578463441" duration="7100000" />
     </task>
     <task id="LOCAL-00001" summary="Auction 작업 중...">
       <option name="closed" value="true" />
@@ -69,7 +70,15 @@
       <option name="project" value="LOCAL" />
       <updated>1698546931274</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Auction 작업 중... (Buy Option 작업 중)">
+      <option name="closed" value="true" />
+      <created>1698562743528</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1698562743528</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -77,6 +86,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Auction 작업 중..." />
-    <option name="LAST_COMMIT_MESSAGE" value="Auction 작업 중..." />
+    <MESSAGE value="Auction 작업 중... (Buy Option 작업 중)" />
+    <option name="LAST_COMMIT_MESSAGE" value="Auction 작업 중... (Buy Option 작업 중)" />
   </component>
 </project>
