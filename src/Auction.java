@@ -42,9 +42,27 @@ public class Auction {
             "FROM AUCTION_USER\n" +
             "JOIN ITEM I on AUCTION_USER.USER_ID = I.SELLER_ID\n" +
             "JOIN BID B on I.ITEM_ID = B.ITEM_ID\n" +
-            "WHERE USERNAME = ?;";
-
-
+            "WHERE USERNAME = ? AND BID_CLOSING_DATE > CURRENT_TIMESTAMP;";
+    private static final String BUY_LIST_SQL = "SELECT\n" +
+            "    I.ITEM_ID,\n" +
+            "    I.DESCRIPTION,\n" +
+            "    C.CONDITION_NAME,\n" +
+            "    (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = I.SELLER_ID) AS SELLER,\n" +
+            "    I.BUY_NOW_PRICE,\n" +
+            "    B.BID_PRICE,\n" +
+            "       COALESCE((SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID), 'No one yet') AS HIGHEST_BIDDER,\n" +
+            "       extract(year from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','\n" +
+            "           || extract(month from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','\n" +
+            "           || extract(day from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','\n" +
+            "           || extract(hour from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','\n" +
+            "           || extract(minute from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ',' AS TIME_LEFT,\n" +
+            "    B.BID_CLOSING_DATE\n" +
+            "FROM AUCTION_USER\n" +
+            "JOIN ITEM I on AUCTION_USER.USER_ID = I.SELLER_ID\n" +
+            "JOIN BID B on I.ITEM_ID = B.ITEM_ID\n" +
+            "JOIN CONDITION C on I.CONDITION_ID = C.CONDITION_ID\n" +
+            "JOIN CATEGORY C2 on I.CATEGORY_ID = C2.CATEGORY_ID\n" +
+            "WHERE BID_CLOSING_DATE >= CURRENT_TIMESTAMP";
     enum Category {
         ELECTRONICS,
         BOOKS,
@@ -519,8 +537,8 @@ public class Auction {
     }
 
     public static boolean BuyItem(){
-        Category category;
-        Condition condition;
+        Category category = null;
+        Condition condition = null;
         char choice;
         int price;
         String keyword, seller, datePosted;
@@ -642,19 +660,59 @@ public class Auction {
             return false;
         }
 
-        /* TODO: Query condition: item category */
-        /* TODO: Query condition: item condition */
-        /* TODO: Query condition: items whose description match the keyword (use LIKE operator) */
-        /* TODO: Query condition: items from a particular seller */
-        /* TODO: Query condition: posted date of item */
+        String buy_list_sql = BUY_LIST_SQL;
+        if (category != null) {
+            buy_list_sql += " AND I.CATEGORY_ID = ?";
+        }
+        buy_list_sql += " AND I.CONDITION_ID = ?";
+        buy_list_sql += " AND I.DESCRIPTION LIKE '%' || ? ||'%'";
+        buy_list_sql += " AND AUCTION_USER.USERNAME LIKE '%' || ? ||'%'";
+        buy_list_sql += " AND I.DATE_POSTED >= ?";
 
-        /* TODO: List all items that match the query condition */
-        System.out.println("Item ID | Item description | Condition | Seller | Buy-It-Now | Current Bid | highest bidder | Time left | bid close");
-        System.out.println("-------------------------------------------------------------------------------------------------------");
-                /*
-                   while(rset.next()){
-                   }
-                 */
+        if (seller.equals("any")) {
+            seller = "";
+        }
+        LocalDateTime dateTime = LocalDateTime.parse(datePosted + "T00:00");
+
+        ResultSet rs = null;
+        try (PreparedStatement pstmt = conn.prepareStatement(buy_list_sql))
+        {
+            if (category != null) {
+                pstmt.setInt(1, category.getNum());
+                pstmt.setInt(2, condition.getNum());
+                pstmt.setString(3, keyword);
+                pstmt.setString(4, seller);
+                pstmt.setObject(5, dateTime);
+            } else {
+                pstmt.setInt(1, condition.getNum());
+                pstmt.setString(2, keyword);
+                pstmt.setString(3, seller);
+                pstmt.setObject(4, dateTime);
+            }
+            rs = pstmt.executeQuery();
+
+            System.out.println("Item ID | Item description | Condition | Seller | Buy-It-Now | Current Bid | highest bidder | Time left | bid close");
+            System.out.println("-------------------------------------------------------------------------------------------------------");
+
+            // todo (1): 여기서부터 다시 => time left 처리하는 메소드 작성하기
+            while (rs.next()) {
+                String itemId = Integer.toString(rs.getInt("item_id"));
+                String description = rs.getString("description");
+                String con = rs.getString("condition_name");
+                String sell = rs.getString("seller");
+                String buyNow = Integer.toString(rs.getInt("buy_now_price"));
+                String curBid = Integer.toString(rs.getInt("bid_price"));
+                String highestBidder = rs.getString("highest_bidder");
+                String timeLeft = rs.getString("time_left");
+                LocalDateTime bidClose = rs.getObject("bid_closing_date", LocalDateTime.class);
+                System.out.println(itemId  + " | " + description + " | " + con + " | " + sell +  " | " + buyNow +  " | " + curBid +  " | " + highestBidder +  " | " + timeLeft +  " | " + bidClose );
+            }
+            rs.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.out.println("Failed to load items from auction. Please tyy again.");
+        }
+
 
         System.out.println("---- Select Item ID to buy or bid: ");
 
@@ -809,6 +867,7 @@ public class Auction {
                         if(!ret) continue;
                         break;
                     case '2':
+                        // 완료
                         CheckSellStatus();
                         break;
                     case '3':
