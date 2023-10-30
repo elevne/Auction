@@ -128,6 +128,23 @@ public class Auction {
             "    BUYER_PAY, SELLER_PAY\n" +
             "    FROM BILLING B\n" +
             "WHERE SELLER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);";
+    private static final String SELLER_RANK_SQL = "SELECT\n" +
+            "    AU.USER_ID AS SELLER_ID,\n" +
+            "    AU.USERNAME AS SELLER_USERNAME,\n" +
+            "    COUNT(BI.SOLD_ITEM_ID) AS ITEMS_SOLD,\n" +
+            "    COALESCE(SUM(BI.BUYER_PAY) - SUM(BI.SELLER_PAY), 0) AS TOTAL_PROFIT\n" +
+            "FROM AUCTION_USER AU\n" +
+            "LEFT JOIN BILLING BI ON AU.USER_ID = BI.SELLER_ID\n" +
+            "GROUP BY AU.USER_ID, AU.USERNAME\n" +
+            "ORDER BY TOTAL_PROFIT DESC, ITEMS_SOLD DESC;";
+    private static final String BUYER_RANK_SQL = "SELECT\n" +
+            "    AU.USERNAME AS BUYER_ID,\n" +
+            "    COUNT(BI.SOLD_ITEM_ID) AS ITEM_BOUGHT,\n" +
+            "    COALESCE(SUM(BI.BUYER_PAY), 0) AS SPENT_MONEY\n" +
+            "FROM AUCTION_USER AU\n" +
+            "LEFT JOIN BILLING BI on AU.USER_ID = BI.BUYER_ID\n" +
+            "GROUP BY AU.USER_ID, AU.USERNAME\n" +
+            "ORDER BY SPENT_MONEY DESC, ITEM_BOUGHT DESC;";
     enum Category {
         ELECTRONICS,
         BOOKS,
@@ -215,14 +232,19 @@ public class Auction {
 
             // id 조회가 안되는 경우
             if (userpass_check == null) {
+                System.out.println("User is not found.");
                 username = null;
                 return false;
             }
             // id 가 조회되고 패스워드가 일치할 경우
             else if (userpass_check.equals(userpass)) login_result = true;
             // id 가 조회되지만 패스워드가 일치하지 않는 경우
-            else System.out.println("Password is incorrect. Please try again");
-
+            else {
+                System.out.println("Password is incorrect. Please try again");
+                pstmt.close();
+                rs.close();
+                return false;
+            }
             pstmt.close();
             rs.close();
         } catch (SQLException e) {
@@ -571,28 +593,42 @@ public class Auction {
                     System.out.println("Failed to load info. Please try again.");
                     return false;
                 }
-                                /*
-                                   while(rset.next()){
-                                   }
-                                 */
                 continue;
             } else if (choice == '3') {
-                /*TODO: Print Seller Ranking */
+                /* Print Seller Ranking */
                 System.out.println("seller ID   | # of items sold | Total Profit (excluding commissions)");
                 System.out.println("--------------------------------------------------------------------");
-                                /*
-                                   while(rset.next()){
-                                   }
-                                 */
+                try {
+                    PreparedStatement pstmt = conn.prepareStatement(SELLER_RANK_SQL);
+                    ResultSet rs = pstmt.executeQuery();
+                    while (rs.next()) {
+                        String sellerName = rs.getString("seller_username");
+                        String numSold = Integer.toString(rs.getInt("items_sold"));
+                        String profit = Integer.toString(rs.getInt("total_profit"));
+                        System.out.println(sellerName + "   |   " + numSold + "   |   " + profit);
+                    }
+                } catch (SQLException e) {
+                    System.out.println("Failed to load rank info. Please try again.");
+                    return false;
+                }
                 continue;
             } else if (choice == '4') {
-                /*TODO: Print Buyer Ranking */
+                /* Print Buyer Ranking */
                 System.out.println("buyer ID   | # of items purchased | Total Money Spent ");
                 System.out.println("------------------------------------------------------");
-                                /*
-                                   while(rset.next()){
-                                   }
-                                 */
+                try {
+                    PreparedStatement pstmt = conn.prepareStatement(BUYER_RANK_SQL);
+                    ResultSet rs = pstmt.executeQuery();
+                    while (rs.next()) {
+                        String buyerId = rs.getString("buyer_id");
+                        String numSold = Integer.toString(rs.getInt("item_bought"));
+                        String profit = Integer.toString(rs.getInt("spent_money"));
+                        System.out.println(buyerId + "   |   " + numSold + "   |   " + profit);
+                    }
+                } catch (SQLException e) {
+                    System.out.println("Failed to load rank info. Please try again.");
+                    return false;
+                }
                 continue;
             } else if (choice == 'P' || choice == 'p') {
                 return false;
@@ -1025,7 +1061,10 @@ public class Auction {
                     case '1':
                         // 완료
                         ret = LoginMenu();
-                        if (!ret) continue;
+                        if (!ret) {
+                            username = null;
+                            continue;
+                        }
                         break;
                     case '2':
                         // 완료
