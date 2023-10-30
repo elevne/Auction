@@ -42,7 +42,7 @@ public class Auction {
             "FROM AUCTION_USER\n" +
             "JOIN ITEM I on AUCTION_USER.USER_ID = I.SELLER_ID\n" +
             "JOIN BID B on I.ITEM_ID = B.ITEM_ID\n" +
-            "WHERE USERNAME = ? AND BID_CLOSING_DATE > CURRENT_TIMESTAMP;";
+            "WHERE USERNAME = ? AND BID_CLOSING_DATE > CURRENT_TIMESTAMP AND I.STATUS = 'Y';";
     private static final String BUY_LIST_SQL = "SELECT\n" +
             "    I.ITEM_ID,\n" +
             "    I.DESCRIPTION,\n" +
@@ -62,8 +62,8 @@ public class Auction {
             "JOIN BID B on I.ITEM_ID = B.ITEM_ID\n" +
             "JOIN CONDITION C on I.CONDITION_ID = C.CONDITION_ID\n" +
             "JOIN CATEGORY C2 on I.CATEGORY_ID = C2.CATEGORY_ID\n" +
-            "WHERE BID_CLOSING_DATE >= CURRENT_TIMESTAMP AND I.STATUS = 'Y'";
-    private static final String ITEM_SELECT_SQL = "SELECT BID_PRICE,  BUY_NOW_PRICE,\n" +
+            "WHERE BID_CLOSING_DATE >= CURRENT_TIMESTAMP AND I.STATUS = 'Y' AND AUCTION_USER.USERNAME <> ?";
+    private static final String ITEM_SELECT_SQL = "SELECT BID_PRICE, BUY_NOW_PRICE,\n" +
             "       CASE\n" +
             "           WHEN CURRENT_TIMESTAMP > BID_CLOSING_DATE\n" +
             "           THEN 'TRUE'\n" +
@@ -73,7 +73,8 @@ public class Auction {
             "JOIN BID B on I.ITEM_ID = B.ITEM_ID\n" +
             "WHERE I.ITEM_ID = ?;";
     private static final String BIDDING_SQL = "UPDATE BID\n" +
-            "SET BID_PRICE = ?, BIDDER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);";
+            "SET BID_PRICE = ?, BIDDER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?)\n" +
+            "WHERE ITEM_ID = ?;";
     private static final String BID_HISTORY_INSERT_SQL = "INSERT INTO BID_HISTORY(BID_HISTORY_ID, BID_ID, BIDDER_ID, BID_PRICE, BID_DATE) \n" +
             "VALUES (\n" +
             "        (SELECT COALESCE(MAX(BID_HISTORY_ID), 0) + 1 FROM BID_HISTORY),\n" +
@@ -95,12 +96,12 @@ public class Auction {
             "        ?,\n" +
             "        ?\n" +
             "       );";
-    private static final String CHECK_BID_STATUS = "    SELECT B.ITEM_ID, DESCRIPTION, (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID) AS HIGHEST_BIDDER, B.BID_PRICE, H.BID_PRICE AS YOUR_PRICE, to_char(B.BID_CLOSING_DATE, 'YYYY-MM-DD HH24:MI') AS BID_CLOSING_DATE\n" +
+    private static final String CHECK_BID_STATUS = "SELECT B.ITEM_ID, DESCRIPTION, (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID) AS HIGHEST_BIDDER, B.BID_PRICE, H.BID_PRICE AS YOUR_PRICE, to_char(B.BID_CLOSING_DATE, 'YYYY-MM-DD HH24:MI') AS BID_CLOSING_DATE\n" +
             "    FROM BID_HISTORY H\n" +
             "    JOIN BID B on H.BID_ID = B.BID_ID\n" +
             "    JOIN ITEM I on B.ITEM_ID = I.ITEM_ID\n" +
             "    JOIN AUCTION_USER AU on H.BIDDER_ID = AU.USER_ID\n" +
-            "    WHERE USER_ID = ?;";
+            "    WHERE AU.USERNAME = ?;";
     private static final String SOLD_ITEM_SQL = "SELECT CATEGORY_NAME, ITEM_ID, to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE, BILLING.BUYER_PAY, BUYER_ID, BILLING.SELLER_PAY\n" +
             "FROM BILLING\n" +
             "JOIN ITEM I on BILLING.SOLD_ITEM_ID = I.ITEM_ID\n" +
@@ -111,6 +112,22 @@ public class Auction {
             "JOIN ITEM I on BILLING.SOLD_ITEM_ID = I.ITEM_ID\n" +
             "JOIN CATEGORY C on I.CATEGORY_ID = C.CATEGORY_ID\n" +
             "WHERE BILLING.BUYER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);";
+    private static final String SOLD_ITEMS_PER_CATEGORY = "SELECT I.description, to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE,\n" +
+            "       (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BUYER_ID) AS BUYER_ID,\n" +
+            "       (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.SELLER_ID) AS SELLER_ID,\n" +
+            "       b.BUYER_PAY, b.SELLER_PAY\n" +
+            "FROM\n" +
+            "    BILLING B\n" +
+            "JOIN ITEM I on B.SOLD_ITEM_ID = I.ITEM_ID\n" +
+            "JOIN CATEGORY C on I.CATEGORY_ID = C.CATEGORY_ID\n" +
+            "WHERE C.CATEGORY_NAME = ?;";
+    private static final String SELLER_INFO_SQL = "SELECT\n" +
+            "    (SELECT DESCRIPTION FROM ITEM WHERE ITEM_ID = B.SOLD_ITEM_ID) AS SOLD_ITEM,\n" +
+            "    to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE,\n" +
+            "    (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BUYER_ID) AS BUYER_ID,\n" +
+            "    BUYER_PAY, SELLER_PAY\n" +
+            "    FROM BILLING B\n" +
+            "WHERE SELLER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);";
     enum Category {
         ELECTRONICS,
         BOOKS,
@@ -510,21 +527,50 @@ public class Auction {
                 System.out.println("----Enter Category to search : ");
                 keyword = scanner.next();
                 scanner.nextLine();
-                /*TODO: Print Sold Items per Category */
+                /* Print Sold Items per Category */
                 System.out.println("sold item       | sold date       | seller ID   | buyer ID   | price | commissions");
                 System.out.println("----------------------------------------------------------------------------------");
-                                /*
-                                   while(rset.next()){
-                                   }
-                                 */
+                try {
+                    PreparedStatement pstmt = conn.prepareStatement(SOLD_ITEMS_PER_CATEGORY);
+                    pstmt.setString(1, keyword);
+                    ResultSet rs = pstmt.executeQuery();
+                    while (rs.next()) {
+                        String description = rs.getString("description");
+                        String soldDate = rs.getString("sold_date");
+                        String sellerId = rs.getString("seller_id");
+                        String buyerId = rs.getString("buyer_id");
+                        String price = Integer.toString(rs.getInt("buyer_pay"));
+                        String commission = Integer.toString(rs.getInt("seller_pay"));
+                        System.out.println(description + " | " + soldDate + " | " + sellerId + " | " + buyerId +  " | " + price +  " | " + commission);
+                    }
+                } catch (SQLException e) {
+                    System.out.println("Failed to load statistics. Please try again.");
+                    return false;
+                }
                 continue;
             } else if (choice == '2') {
-                /*TODO: Print Account Balance for Seller */
+                /* Print Account Balance for Seller */
                 System.out.println("---- Enter Seller ID to search : ");
                 seller = scanner.next();
                 scanner.nextLine();
                 System.out.println("sold item       | sold date       | buyer ID   | price | commissions");
                 System.out.println("--------------------------------------------------------------------");
+                try {
+                    PreparedStatement pstmt = conn.prepareStatement(SELLER_INFO_SQL);
+                    pstmt.setString(1, seller);
+                    ResultSet rs = pstmt.executeQuery();
+                    while (rs.next()) {
+                        String description = rs.getString("sold_item");
+                        String soldDate = rs.getString("sold_date");
+                        String buyerId = rs.getString("buyer_id");
+                        String price = Integer.toString(rs.getInt("buyer_pay"));
+                        String commission = Integer.toString(rs.getInt("seller_pay"));
+                        System.out.println(description + " | " + soldDate + " | " + buyerId + " | " + price + " | " + commission);
+                    }
+                } catch (SQLException e) {
+                    System.out.println("Failed to load info. Please try again.");
+                    return false;
+                }
                                 /*
                                    while(rset.next()){
                                    }
@@ -577,6 +623,7 @@ public class Auction {
             pstmt.close();
             rs.close();
         } catch (SQLException e) {
+            e.printStackTrace();
             try {
                 conn.rollback();
             } catch (Exception e2) {}
@@ -727,16 +774,18 @@ public class Auction {
         try (PreparedStatement pstmt = conn.prepareStatement(buy_list_sql))
         {
             if (category != null) {
-                pstmt.setInt(1, category.getNum());
+                pstmt.setString(1, username);
+                pstmt.setInt(2, category.getNum());
+                pstmt.setInt(3, condition.getNum());
+                pstmt.setString(4, keyword);
+                pstmt.setString(5, seller);
+                pstmt.setObject(6, dateTime);
+            } else {
+                pstmt.setString(1, username);
                 pstmt.setInt(2, condition.getNum());
                 pstmt.setString(3, keyword);
                 pstmt.setString(4, seller);
                 pstmt.setObject(5, dateTime);
-            } else {
-                pstmt.setInt(1, condition.getNum());
-                pstmt.setString(2, keyword);
-                pstmt.setString(3, seller);
-                pstmt.setObject(4, dateTime);
             }
             rs = pstmt.executeQuery();
 
@@ -765,17 +814,19 @@ public class Auction {
             }
             rs.close();
         } catch (SQLException e) {
-            System.out.println("Failed to load items from auction. Please tyy again.");
+            e.printStackTrace();
+            System.out.println("Failed to load items from auction. Please try again.");
         }
 
         if (cnt == 0) {
             System.out.println("There are no items to show.");
             return false;
         }
-
+        int chosenItem = 0;
         System.out.println("---- Select Item ID to buy or bid: ");
         try {
             choice = scanner.next().charAt(0);;
+            chosenItem = choice - '0';
             scanner.nextLine();
             System.out.println("     Price: ");
             price = scanner.nextInt();
@@ -792,7 +843,7 @@ public class Auction {
         // 3. price 가 더 낮을 경우 bid 갱신 처리만 해주기
         try {
             PreparedStatement pstmt1 = conn.prepareStatement(ITEM_SELECT_SQL);
-            pstmt1.setInt(1, choice);
+            pstmt1.setInt(1, chosenItem);
             ResultSet rs1 = pstmt1.executeQuery();
 
             int rsCnt = 0;
@@ -800,7 +851,7 @@ public class Auction {
             int buyNowPrice = 0;
             String passedDate = "";
             while (rs1.next()) {
-                rsCnt++;
+                rsCnt += 1;
                 bidPrice = rs1.getInt("bid_price");
                 passedDate = rs1.getString("passed_date");
                 buyNowPrice = rs1.getInt("buy_now_price");
@@ -821,10 +872,10 @@ public class Auction {
             // 바로 구매
             else if (buyNowPrice <= price) {
                 PreparedStatement pstmt2 = conn.prepareStatement(ITEM_STATUS_UPDATE_SQL);
-                pstmt2.setInt(1, choice);
+                pstmt2.setInt(1, chosenItem);
                 PreparedStatement pstmt3 = conn.prepareStatement(INSERT_BILLING_SQL);
-                pstmt3.setInt(1, choice);
-                pstmt3.setInt(2, choice);
+                pstmt3.setInt(1, chosenItem);
+                pstmt3.setInt(2, chosenItem);
                 pstmt3.setString(3, username);
                 pstmt3.setInt(4, buyNowPrice);
                 pstmt3.setInt(5,  buyNowPrice / 10);
@@ -842,9 +893,10 @@ public class Auction {
                 PreparedStatement pstmt2 = conn.prepareStatement(BIDDING_SQL);
                 pstmt2.setInt(1, price);
                 pstmt2.setString(2, username);
+                pstmt2.setInt(3, chosenItem);
                 pstmt2.executeUpdate();
                 PreparedStatement pstmt3 = conn.prepareStatement(BID_HISTORY_INSERT_SQL);
-                pstmt3.setInt(1, choice);
+                pstmt3.setInt(1, chosenItem);
                 pstmt3.setString(2, username);
                 pstmt3.setInt(3, price);
                 pstmt3.executeUpdate();
@@ -855,6 +907,7 @@ public class Auction {
                 pstmt2.close();
             }
         } catch (SQLException e) {
+            e.printStackTrace();
             try {
                 conn.rollback();
             } catch (SQLException e1) {}
@@ -882,6 +935,7 @@ public class Auction {
                 );
             }
         } catch (SQLException e) {
+            e.printStackTrace();
             System.out.println("Failed to load bid status. Please try again");
             return;
         }
@@ -912,14 +966,15 @@ public class Auction {
             pstmt2.setString(1, username);
             ResultSet rs2 = pstmt2.executeQuery();
             while (rs2.next()) {
-                String category = rs1.getString("category_name");
-                String itemId = Integer.toString(rs1.getInt("item_id"));
-                String soldDate = rs1.getString("sold_date");
-                String soldPrice = Integer.toString(rs1.getInt("buyer_pay"));
-                String sellerId = rs1.getString("seller_id");
+                String category = rs2.getString("category_name");
+                String itemId = Integer.toString(rs2.getInt("item_id"));
+                String soldDate = rs2.getString("sold_date");
+                String soldPrice = Integer.toString(rs2.getInt("buyer_pay"));
+                String sellerId = rs2.getString("seller_id");
                 System.out.println(category + " | " + itemId + " | " + soldDate + " | " + soldPrice + " | " + sellerId);
             }
         } catch (SQLException e) {
+            e.printStackTrace();
             System.out.println("Failed to check account info. Please try again");
             return;
         }
@@ -1027,17 +1082,17 @@ public class Auction {
                         CheckSellStatus();
                         break;
                     case '3':
-                        // 테스트 필요
+                        // 완료
                         ret = BuyItem();
                         if(!ret) continue;
                         break;
                         // todo: case 4, 5 bid 시간 종료된거 체크하고 구매처리하는 거 하기
                     case '4':
-                        // 테스트 필요 (수정 필요한지 다시 생각해보기)
+                        // 완료
                         CheckBuyStatus();
                         break;
                     case '5':
-                        // 테스트 필요
+                        // 완료
                         CheckAccount();
                         break;
                     case 'q':
