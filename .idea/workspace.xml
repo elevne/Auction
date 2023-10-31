@@ -4,8 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7ce63c80-7d47-445f-bf16-50b21e72487d" name="Changes" comment="Auction 작업 중... (대부분 작업 완료 / ADMIN 기능 두 개 및 BID 시간 종료 시 작업해주는 것만 해주면 완료)">
+    <list default="true" id="7ce63c80-7d47-445f-bf16-50b21e72487d" name="Changes" comment="Auction 작업 중... (ADMIN 작업 완료 / BID 종료된 것만 처리해주기)">
+      <change afterPath="$PROJECT_DIR$/src/data.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ddl.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/dml.sql" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backup.sql" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/Auction.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/Auction.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -61,7 +65,8 @@
       <workItem from="1698471761631" duration="2541000" />
       <workItem from="1698543140939" duration="9656000" />
       <workItem from="1698578463441" duration="7737000" />
-      <workItem from="1698657223970" duration="5620000" />
+      <workItem from="1698657223970" duration="9907000" />
+      <workItem from="1698718143785" duration="4637000" />
     </task>
     <task id="LOCAL-00001" summary="Auction 작업 중...">
       <option name="closed" value="true" />
@@ -95,7 +100,15 @@
       <option name="project" value="LOCAL" />
       <updated>1698661395694</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="Auction 작업 중... (ADMIN 작업 완료 / BID 종료된 것만 처리해주기)">
+      <option name="closed" value="true" />
+      <created>1698664672398</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1698664672398</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -106,6 +119,7 @@
     <MESSAGE value="Auction 작업 중... (Buy Option 작업 중)" />
     <MESSAGE value="Auction 작업 중... (대부분 작업 완료 / 테스트 필요) / BID 시간 종료된 거 체크하는 작업 필요" />
     <MESSAGE value="Auction 작업 중... (대부분 작업 완료 / ADMIN 기능 두 개 및 BID 시간 종료 시 작업해주는 것만 해주면 완료)" />
-    <option name="LAST_COMMIT_MESSAGE" value="Auction 작업 중... (대부분 작업 완료 / ADMIN 기능 두 개 및 BID 시간 종료 시 작업해주는 것만 해주면 완료)" />
+    <MESSAGE value="Auction 작업 중... (ADMIN 작업 완료 / BID 종료된 것만 처리해주기)" />
+    <option name="LAST_COMMIT_MESSAGE" value="Auction 작업 중... (ADMIN 작업 완료 / BID 종료된 것만 처리해주기)" />
   </component>
 </project>

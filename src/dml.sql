@@ -1,0 +1,211 @@
+    /* 아래에 적힌 모든 SQL 문은 Auction.java 위에 private static final String 변수로 들어가있습니다. */
+    /* 로그인 시 사용하는 SELECT 문 */
+    SELECT * FROM AUCTION_USER WHERE USERNAME = ?;
+
+    /* 회원가입 시 사용하는 INSERT 문 */
+    INSERT INTO
+        AUCTION_USER(user_id, username, password, is_admin)
+    VALUES
+        (
+                (SELECT COALESCE(MAX(USER_ID), 0) FROM AUCTION_USER) + 1,
+                ?, ?, ?
+        );
+
+    /* ADMIN 로그인 시 사용되는 SELECT 문 */
+    SELECT * FROM AUCTION_USER WHERE USERNAME = ?  AND IS_ADMIN = 'Y';
+
+    /* ITEM 다음 순서 ID 확인 용 쿼리 */
+    SELECT COALESCE(MAX(ITEM_ID), 0) + 1 AS ITEM_ID FROM ITEM;
+
+    /* 새로운 ITEM 등록 시 사용하는 INSERT 문 */
+    INSERT INTO ITEM(ITEM_ID, CATEGORY_ID, DESCRIPTION, CONDITION_ID, SELLER_ID, BUY_NOW_PRICE, DATE_POSTED, STATUS)
+    VALUES (
+               ?,
+               ?,
+               ?,
+               ?,
+               (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?),
+               ?,
+               current_timestamp,
+               'Y'
+           );
+
+    /* 새로운 ITEM 등록 시 동시에 BID 테이블에도 해당 아이템 정보 기입 */
+    INSERT INTO BID(BID_ID, ITEM_ID, BID_PRICE, BIDDER_ID, DATE_POSTED, BID_CLOSING_DATE) VALUES
+        (
+            (SELECT COALESCE(MAX(BID_ID), 0) + 1 FROM BID),
+            ?,
+            null,
+            null,
+            current_timestamp,
+            ?
+        );
+
+    /* 사용자 Bid 시마다 모든 기록 저장 */
+    INSERT INTO BID_HISTORY(BID_HISTORY_ID, BID_ID, BIDDER_ID, BID_PRICE, BID_DATE)
+    VALUES (
+               (SELECT COALESCE(MAX(BID_HISTORY_ID), 0) + 1 FROM BID_HISTORY),
+               (SELECT BID_ID FROM BID WHERE ITEM_ID = ?),
+               (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?),
+               ?,
+               current_timestamp
+           );
+
+    /* 사용자의 Bid 기록 확인하기 */
+    SELECT B.ITEM_ID, DESCRIPTION, (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID) AS HIGHEST_BIDDER, B.BID_PRICE, H.BID_PRICE AS YOUR_PRICE, to_char(B.BID_CLOSING_DATE, 'YYYY-MM-DD HH24:MI') AS BID_CLOSING_DATE
+    FROM BID_HISTORY H
+             JOIN BID B on H.BID_ID = B.BID_ID
+             JOIN ITEM I on B.ITEM_ID = I.ITEM_ID
+             JOIN AUCTION_USER AU on H.BIDDER_ID = AU.USER_ID
+    WHERE USER_ID = ?;
+
+    /* 사용자의 판매 목록 확안하기 */
+    SELECT *, COALESCE((SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID), 'No one yet') AS BIDDER_USERNAME
+    FROM AUCTION_USER
+             JOIN ITEM I on AUCTION_USER.USER_ID = I.SELLER_ID
+             JOIN BID B on I.ITEM_ID = B.ITEM_ID
+    WHERE USERNAME = ?
+      AND BID_CLOSING_DATE > CURRENT_TIMESTAMP AND I.STATUS = 'Y';
+
+    /* 구매 시 사용되는 SELECT 쿼리 (사용자 입력에 따라 뒤에 AND 조건이 더 붙음) */
+    SELECT
+        I.ITEM_ID,
+        I.DESCRIPTION,
+        C.CONDITION_NAME,
+        (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = I.SELLER_ID) AS SELLER,
+        I.BUY_NOW_PRICE,
+        B.BID_PRICE,
+        COALESCE((SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BIDDER_ID), 'No one yet') AS HIGHEST_BIDDER,
+        extract(year from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','
+            || extract(month from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','
+            || extract(day from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','
+            || extract(hour from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ','
+            || extract(minute from BID_CLOSING_DATE - CURRENT_TIMESTAMP) || ',' AS TIME_LEFT,
+        B.BID_CLOSING_DATE
+    FROM AUCTION_USER
+             JOIN ITEM I on AUCTION_USER.USER_ID = I.SELLER_ID
+             JOIN BID B on I.ITEM_ID = B.ITEM_ID
+             JOIN CONDITION C on I.CONDITION_ID = C.CONDITION_ID
+             JOIN CATEGORY C2 on I.CATEGORY_ID = C2.CATEGORY_ID
+    WHERE BID_CLOSING_DATE >= CURRENT_TIMESTAMP AND I.STATUS = 'Y'
+      AND I.CONDITION_ID = 4
+      AND AUCTION_USER.USERNAME LIKE '%' || ? || '%'
+      AND AUCTION_USER.USERNAME <> ?
+    ;
+
+    /* 사용자가 구매하고자하는 ITEM ID 를 입력하면 볼 수 있는 아이템 정보 */
+    SELECT BID_PRICE, BUY_NOW_PRICE,
+           CASE
+               WHEN CURRENT_TIMESTAMP > BID_CLOSING_DATE
+                   THEN 'TRUE'
+               ELSE 'FALSE'
+               END AS PASSED_DATE
+    FROM ITEM I
+             JOIN BID B on I.ITEM_ID = B.ITEM_ID
+    WHERE I.ITEM_ID = ?;
+
+    /* 사용자 BID 처리 */
+    UPDATE BID
+    SET BID_PRICE = ?, BIDDER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?)
+    WHERE ITEM_ID = ?;
+
+    /* 아이템 구매 처리 */
+    UPDATE ITEM
+    SET STATUS = 'N'
+    WHERE ITEM_ID = ?;
+
+    /* 구매 BILLING 처리 */
+    INSERT INTO BILLING(BILLING_ID, SOLD_ITEM_ID, PURCHASE_DATE, SELLER_ID, BUYER_ID, BUYER_PAY, SELLER_PAY)
+    VALUES (
+                   (SELECT COALESCE(MAX(BILLING_ID), 0) FROM BILLING) + 1,
+                   ?,
+                   CURRENT_TIMESTAMP,
+                   (SELECT USER_ID FROM ITEM JOIN AUCTION_USER AU on ITEM.SELLER_ID = AU.USER_ID WHERE ITEM_ID = ? ),
+                   (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?),
+                   ?,
+                   ?
+           );
+
+    /* 사용자의 팔린 아이템 확인하는 SELECT 문 */
+    SELECT CATEGORY_NAME, ITEM_ID, to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE, BILLING.BUYER_PAY, BUYER_ID, BILLING.SELLER_PAY
+    FROM BILLING
+             JOIN ITEM I on BILLING.SOLD_ITEM_ID = I.ITEM_ID
+             JOIN CATEGORY C on I.CATEGORY_ID = C.CATEGORY_ID
+    WHERE BILLING.SELLER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);
+
+    /* 사용자가 구매한 아이템 확인하는 SELECT 문 */
+    SELECT CATEGORY_NAME, ITEM_ID, to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE, BILLING.BUYER_PAY, BILLING.SELLER_ID, BILLING.SELLER_PAY
+    FROM BILLING
+             JOIN ITEM I on BILLING.SOLD_ITEM_ID = I.ITEM_ID
+             JOIN CATEGORY C on I.CATEGORY_ID = C.CATEGORY_ID
+    WHERE BILLING.BUYER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);
+
+
+    /* ADMIN 1번 기능 */
+    SELECT I.description, to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE,
+           (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BUYER_ID) AS BUYER_ID,
+           (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.SELLER_ID) AS SELLER_ID,
+           b.BUYER_PAY, b.SELLER_PAY
+    FROM
+        BILLING B
+            JOIN ITEM I on B.SOLD_ITEM_ID = I.ITEM_ID
+            JOIN CATEGORY C on I.CATEGORY_ID = C.CATEGORY_ID
+    WHERE C.CATEGORY_NAME = ?;
+
+    /* ADMIN 2번 기능 */
+    SELECT
+        (SELECT DESCRIPTION FROM ITEM WHERE ITEM_ID = B.SOLD_ITEM_ID) AS SOLD_ITEM,
+        to_char(PURCHASE_DATE, 'YYYY-MM-DD HH24:MI') AS SOLD_DATE,
+        (SELECT USERNAME FROM AUCTION_USER WHERE USER_ID = B.BUYER_ID) AS BUYER_ID,
+        BUYER_PAY, SELLER_PAY
+    FROM BILLING B
+    WHERE SELLER_ID = (SELECT USER_ID FROM AUCTION_USER WHERE USERNAME = ?);
+
+    /* ADMIN 3번 기능 */
+    SELECT
+        AU.USER_ID AS SELLER_ID,
+        AU.USERNAME AS SELLER_USERNAME,
+        COUNT(BI.SOLD_ITEM_ID) AS ITEMS_SOLD,
+        COALESCE(SUM(BI.BUYER_PAY) - SUM(BI.SELLER_PAY), 0) AS TOTAL_PROFIT
+    FROM AUCTION_USER AU
+             LEFT JOIN BILLING BI ON AU.USER_ID = BI.SELLER_ID
+    GROUP BY AU.USER_ID, AU.USERNAME
+    ORDER BY TOTAL_PROFIT DESC, ITEMS_SOLD DESC;
+
+    /* ADMIN 4번 기능 */
+    SELECT
+        AU.USERNAME AS BUYER_ID,
+        COUNT(BI.SOLD_ITEM_ID) AS ITEM_BOUGHT,
+        COALESCE(SUM(BI.BUYER_PAY), 0) AS SPENT_MONEY
+    FROM AUCTION_USER AU
+             LEFT JOIN BILLING BI on AU.USER_ID = BI.BUYER_ID
+    GROUP BY AU.USER_ID, AU.USERNAME
+    ORDER BY SPENT_MONEY DESC, ITEM_BOUGHT DESC;
+
+    /* BID 시간 지난 것들 확인 */
+    SELECT bid_id, coalesce(bidder_id, 0) AS BIDDER_ID, BID_PRICE
+    FROM BID
+             JOIN ITEM I on BID.ITEM_ID = I.ITEM_ID
+    WHERE BID_CLOSING_DATE < NOW() AND I.STATUS = 'Y';
+
+    /* BID_ID 로 ITEM STATUS update */
+    UPDATE ITEM
+    SET STATUS = 'N'
+    WHERE ITEM_ID = (SELECT ITEM_ID FROM BID WHERE BID_ID = ?);
+
+    /* BID_ID 로 구매처리 */
+    WITH BID_INFO AS (
+        SELECT BID.ITEM_ID, BID_CLOSING_DATE, BIDDER_ID, SELLER_ID, BID_PRICE
+        FROM BID JOIN ITEM I on BID.ITEM_ID = I.ITEM_ID
+        WHERE BID_ID = ?
+    )
+    INSERT INTO BILLING(BILLING_ID, SOLD_ITEM_ID, PURCHASE_DATE, SELLER_ID, BUYER_ID, BUYER_PAY, SELLER_PAY)
+    VALUES (
+            (SELECT COALESCE(MAX(BILLING_ID), 0) FROM BILLING) + 1,
+            BID_INFO.ITEM_ID,
+            BID_INFO.BID_CLOSING_DATE,
+            BID_INFO.SELLER_ID,
+            BID_INFO.BIDDER_ID,
+            BID_INFO.BID_PRICE,
+            BID_INFO.BID_PRICE / 10
+           );
